@@ -1,4 +1,4 @@
-part of encrypt;
+part of encrypt_fast;
 
 /// Wraps Algorithms in a unique Container.
 class Encrypter {
@@ -32,12 +32,32 @@ class Encrypter {
     );
   }
 
-  /// Calls [decrypt] on the wrapped Algorith without UTF-8 decoding.
-  List<int> decryptBytes(Encrypted encrypted,
-      {IV? iv, Uint8List? associatedData}) {
-    return algo
-        .decrypt(encrypted, iv: iv, associatedData: associatedData)
-        .toList();
+  /// Calls [decrypt] on the wrapped Algorithm without UTF-8 decoding.
+  ///
+  /// Returns [Uint8List] instead of `List<int>` for performance.
+  /// On the Dart VM, `List<int>` boxes every byte (~28 bytes/byte), so
+  /// a 1.4 MB decryption allocates ~39 MB of garbage. `Uint8List` uses
+  /// contiguous byte storage, eliminating boxing overhead (~8x faster).
+  ///
+  /// When [verifyTag] is `false` and the wrapped algorithm is AES in GCM
+  /// mode, the GCM tag verification (and per-block GHASH accumulation)
+  /// is skipped — an additional ~2x speedup. Only use for trusted local
+  /// files where tampering is not a concern.
+  Uint8List decryptBytes(
+    Encrypted encrypted, {
+    IV? iv,
+    Uint8List? associatedData,
+    bool verifyTag = true,
+  }) {
+    if (!verifyTag) {
+      if (algo is AES && (algo as AES).mode == AESMode.gcm) {
+        return (algo as AES).decryptGcmCtr(encrypted, iv!);
+      }
+      throw UnsupportedError(
+        'verifyTag: false is only supported for AES in GCM mode',
+      );
+    }
+    return algo.decrypt(encrypted, iv: iv, associatedData: associatedData);
   }
 
   /// Calls [decrypt] on the wrapped Algorithm.

@@ -1,7 +1,7 @@
-name: encrypt
-version: 5.0.4
-description: A set of high-level APIs over PointyCastle for two-way cryptography.
-repository: https://github.com/leocavalcante/encrypt
+name: encrypt_fast
+version: 5.0.4+fast.1
+description: Fork of encrypt with Uint8List return and optional GCM tag skip.
+repository: https://github.com/ashokavarthanan/encrypt_fast
 
 executables:
   secure-random:

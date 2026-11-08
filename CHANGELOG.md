@@ -1,4 +1,15 @@
-# 5.0.4
+## 5.0.4+fast.1
+
+### Performance
+- `Encrypter.decryptBytes()` now returns `Uint8List` instead of `List<int>` (~8x faster for multi-MB data)
+- Added `verifyTag` parameter to `decryptBytes()` to skip GCM tag verification for trusted local files (~2x additional speedup)
+
+### Notes
+- Fork of `encrypt` 5.0.4 (upstream archived on 2025-06-23)
+- **Fully backward compatible**: `Uint8List` implements `List<int>`, so existing callers that assign the result to `List<int>` continue to work unchanged
+- `verifyTag: false` only supported for AES in GCM mode
+
+## 5.0.4
 
 - Force Pointycastle version
 
