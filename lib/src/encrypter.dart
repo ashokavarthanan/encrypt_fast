@@ -1,4 +1,4 @@
-part of encrypt_fast;
+part of encrypt;
 
 /// Wraps Algorithms in a unique Container.
 class Encrypter {

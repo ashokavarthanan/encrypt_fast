@@ -60,7 +60,7 @@ Current status is:
 #### AES
 
 ```dart
-import 'package:encrypt/encrypt.dart';
+import 'package:encrypt_fast/encrypt.dart';
 
 void main() {
   final plainText = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit';
@@ -106,7 +106,7 @@ final encrypter = Encrypter(AES(key, mode: AESMode.cbc, padding: null));
 #### Salsa20
 
 ```dart
-import 'package:encrypt/encrypt.dart';
+import 'package:encrypt_fast/encrypt.dart';
 
 void main() {
   final plainText = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit';
@@ -125,7 +125,7 @@ void main() {
 #### [Fernet](https://github.com/fernet/spec/blob/master/Spec.md)
 
 ```dart
-import 'package:encrypt/encrypt.dart';
+import 'package:encrypt_fast/encrypt.dart';
 import 'dart:convert';
 
 void main() {
@@ -152,7 +152,7 @@ void main() {
 
 ```dart
 import 'dart:io';
-import 'package:encrypt/encrypt.dart';
+import 'package:encrypt_fast/encrypt.dart';
 import 'package:pointycastle/asymmetric/api.dart';
 
 void main() {

@@ -1,4 +1,4 @@
-library encrypt_fast;
+library encrypt;
 
 import 'dart:convert' as convert;
 import 'dart:math';
