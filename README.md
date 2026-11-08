@@ -4,11 +4,14 @@ A **performance fork** of [`encrypt`](https://github.com/leocavalcante/encrypt.d
 a set of high-level APIs over PointyCastle for two-way cryptography.
 
 > **Why this fork?** The original `encrypt` package was archived on 2025-06-23.
-> This fork adds two backwards-compatible optimizations for large-data decryption:
-> - `decryptBytes()` returns `Uint8List` instead of `List<int>` — **8.4× faster**
-> - `verifyTag: false` parameter — skips GCM tag verification — **40× faster**
+> This fork adds:
+> - A `verifyTag: false` parameter to `decryptBytes()` — **skips per-block GHASH 
+>   authentication** for trusted local data, **up to 42× faster** on multi-MB files
+> - `decryptBytes()` returns `Uint8List` instead of `List<int>` — a minor 
+>   **~2% optimization** (avoids a full copy of the decrypted buffer)
 >
-> Combined: **337× speedup** for multi-MB decryption (13,834 ms → 41 ms for 1.4 MB).
+> The `verifyTag: false` path is where the real speedup comes from. The 
+> `Uint8List` change is small on its own.
 
 > Looking for password hashing? Please, visit 
 > [password](https://github.com/leocavalcante/password-dart).
@@ -136,32 +139,39 @@ final encrypter = Encrypter(AES(key, mode: AESMode.cbc, padding: null));
 
 ---
 
-### Performance: GCM large-data decryption
+### Performance: GCM decryption of large payloads
 
-This is the **main reason to use this fork** over the original `encrypt` package.
+GCM decryption performs **per-block GHASH authentication** during the decrypt 
+loop. This is designed to detect tampering for data in transit, but on large 
+local files it dominates the total time (~86% of the cost for multi-MB payloads 
+on mid-range Android hardware).
 
-#### Standard GCM (with tag verification)
+If you are decrypting **data you already trust** (files you created, data from 
+a trusted local source, or data you independently validate after decryption), 
+you can skip GHASH with `verifyTag: false`.
+
+#### Standard GCM (default — verifies tag)
 
 ```dart
 import 'package:encrypt_fast/encrypt.dart' as enc;
 
-final cipher = enc.AES(enc.Key(key), mode: enc.AESMode.gcm);
+final cipher = enc.AES(enc.Key(key), mode: enc.AESMode.gcm, padding: null);
 final encrypter = enc.Encrypter(cipher);
 
 final decrypted = encrypter.decryptBytes(
   enc.Encrypted(ciphertext),
   iv: enc.IV(iv),
 );
-// Returns: Uint8List (not List<int>)
+// Returns: Uint8List
 ```
 
-#### Fast mode — skip tag verification
+#### Fast mode — skips GHASH
 
 ```dart
 final decrypted = encrypter.decryptBytes(
   enc.Encrypted(ciphertext),
   iv: enc.IV(iv),
-  verifyTag: false,   // skip GCM tag check
+  verifyTag: false,
 );
 ```
 
@@ -170,24 +180,44 @@ final decrypted = encrypter.decryptBytes(
 Only for **trusted local data** where tampering is not a concern:
 - Files you created yourself
 - Data from a trusted source on the same device
-- Cases where you already validate the output (e.g., SQLite header check)
+- Cases where you independently validate the output (e.g. a header or format check on the plaintext)
 
 **Do NOT use for:**
 - Data received over a network
 - Data from untrusted parties
 - Any case where tampering detection matters
 
-If the output is corrupt or tampered, `verifyTag: false` won't catch it. For any security-sensitive use, keep the default `verifyTag: true`.
+If the output is corrupt or tampered, `verifyTag: false` will not catch it. 
+For any security-sensitive use, keep the default `verifyTag: true`.
 
-#### Benchmark (1.4 MB plaintext, Dart test runner, Windows)
+#### Benchmark — 1.4 MB payload
 
-| Mode | Time | Speedup |
+**Android 8.1 (Redmi 6 Pro, debug build, real device):**
+
+| Code path | Time | Speedup |
 |---|---|---|
-| Original `encrypt` 5.0.4 (`GCM` + `List<int>`) | 13,834 ms | 1× |
-| This fork, `verifyTag: true` (GCM + `Uint8List`) | 1,654 ms | **8.4×** |
-| This fork, `verifyTag: false` (CTR + `Uint8List`) | 41 ms | **337×** |
+| Original `encrypt` 5.0.4 (GCM + `padding:null` + `List<int>`) | 13,534 ms | 1× |
+| Fork, `verifyTag: true` (GCM + `padding:null` + `Uint8List`) | 13,280 ms | 1.02× |
+| Fork, `verifyTag: false` (CTR + `Uint8List`) | 630 ms | **21.5×** |
 
-The `verifyTag: false` path uses **AES-CTR with the correct GCM counter derivation** (standard NIST J0 + 1), producing identical plaintext to GCM — it simply skips the per-block GHASH authentication accumulation.
+**Windows desktop (`dart test`, 1.4 MB synthetic plaintext):**
+
+| Code path | Time | Speedup |
+|---|---|---|
+| Original `encrypt` 5.0.4 | 1,712 ms | 1× |
+| Fork, `verifyTag: true` | 1,654 ms | 1.03× |
+| Fork, `verifyTag: false` | 41 ms | **42×** |
+
+**What this shows:**
+
+- The `Uint8List` return type alone saves **~2%** (avoids one full-buffer copy).
+- The `verifyTag: false` path saves **~95%** by skipping per-block GHASH.
+- The overall speedup depends on file size and hardware. Absolute times vary; 
+  the ratio is consistent.
+
+The `verifyTag: false` path uses **AES-CTR with the correct GCM counter 
+derivation** (standard NIST J0 + 1), producing **identical plaintext** to the 
+GCM path — it simply skips the per-block GHASH accumulation.
 
 ---
 
@@ -302,7 +332,19 @@ import 'package:encrypt/encrypt.dart';
 import 'package:encrypt_fast/encrypt.dart';
 ```
 
-That's it. Everything else is unchanged.
+That is it. Everything else is unchanged.
+
+---
+
+## Notes
+
+- The original `encrypt` package can be made to skip tag verification by passing 
+  `padding: null` to the `AES` constructor. However, it still performs the 
+  per-block GHASH computation — so `padding: null` alone does not provide a 
+  speedup. Only the fork's `verifyTag: false` skips the GHASH loop entirely.
+- Benchmarks above were measured with `padding: null` on both packages, so 
+  the comparison isolates the effect of the fork's `verifyTag` parameter 
+  and `Uint8List` return type.
 
 ---
 
